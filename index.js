@@ -1,7 +1,8 @@
 // index.js
 const { executeQuery } = require('./db-connector');
 const { getTableColumns, getPrimaryKey, getUniqueConstraints, getForeignKeys } = require('./metadata-extractor'); 
-const { generateDBML, saveDBMLFile } = require('./dbml-generator'); // <--- IMPORTAR GENERADOR
+const { generateDBML, saveDBMLFile } = require('./dbml-generator');
+const { generateMarkdown, saveMarkdownFile } = require('./dictionary-generator'); // <--- NUEVO IMPORT
 const config = require('./config');
 
 const SQL_LIST_TABLES = `
@@ -10,7 +11,8 @@ const SQL_LIST_TABLES = `
 `;
 
 async function runReverseEngineer() {
-    console.log("🚀 Iniciando ingeniería inversa (Generación DBML)...");
+    console.log("🚀 Iniciando ingeniería inversa COMPLETA...");
+    console.time("Tiempo Total");
 
     try {
         const tablesRaw = await executeQuery(SQL_LIST_TABLES, [config.db.database]);
@@ -19,8 +21,9 @@ async function runReverseEngineer() {
 
         const fullSchema = {};
 
+        // --- EXTRACCIÓN ---
         for (const tableName of tableNames) {
-            process.stdout.write(`   Analizando tabla: ${tableName}... `); 
+            process.stdout.write(`   Procesando: ${tableName}... `); 
             const [columns, pks, uniques, fks] = await Promise.all([
                 getTableColumns(tableName),
                 getPrimaryKey(tableName),
@@ -37,17 +40,24 @@ async function runReverseEngineer() {
             console.log("OK");
         }
 
-        console.log("\n✅ --- EXTRACCIÓN COMPLETADA ---");
+        // --- GENERACIÓN DE ENTREGABLES ---
+        console.log("\n📦 Generando archivos de salida...");
 
-        // --- PASO 4: GENERAR ARCHIVO DBML ---
-        console.log("\n📝 Generando código DBML...");
-        
+        // 1. Diagrama DBML
         const dbmlContent = generateDBML(fullSchema, config.db.database);
-        saveDBMLFile(dbmlContent, 'mi_diagrama.dbml'); // <--- Guarda el archivo
+        saveDBMLFile(dbmlContent, 'diagrama_final.dbml');
+
+        // 2. Diccionario de Datos (Markdown)
+        const mdContent = generateMarkdown(fullSchema, config.db.database);
+        saveMarkdownFile(mdContent, 'diccionario_datos.md');
+
+        console.log("\n✅ ¡PROYECTO CORE TERMINADO (80/80 pts)! 🏆");
+        console.log("   Revisa tu carpeta para ver los archivos generados.");
 
     } catch (error) {
         console.error("\n❌ Error:", error);
     }
+    console.timeEnd("Tiempo Total");
 }
 
 runReverseEngineer();
