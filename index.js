@@ -1,71 +1,68 @@
-// NOMBRE DEL ARCHIVO: index.js
+// index.js
 const { executeQuery } = require('./db-connector');
-// Importamos las 3 funciones (Columnas, PKs y Uniques)
-const { getTableColumns, getPrimaryKey, getUniqueConstraints } = require('./metadata-extractor'); 
+// Importamos las 4 funciones
+const { getTableColumns, getPrimaryKey, getUniqueConstraints, getForeignKeys } = require('./metadata-extractor'); 
 const config = require('./config');
 
-// Query básica para listar las tablas [cite: 154-158]
 const SQL_LIST_TABLES = `
-    SELECT TABLE_NAME
-    FROM information_schema.TABLES
-    WHERE TABLE_SCHEMA = ? AND TABLE_TYPE = 'BASE TABLE'
-    ORDER BY TABLE_NAME;
+    SELECT TABLE_NAME FROM information_schema.TABLES
+    WHERE TABLE_SCHEMA = ? AND TABLE_TYPE = 'BASE TABLE' ORDER BY TABLE_NAME;
 `;
 
 async function runReverseEngineer() {
-    console.log("🚀 Iniciando ingeniería inversa (Paso 2 Completo)...");
+    console.log("🚀 Iniciando ingeniería inversa (Paso 3: Relaciones)...");
 
     try {
-        // 1. Obtener la lista de tablas
         const tablesRaw = await executeQuery(SQL_LIST_TABLES, [config.db.database]);
         const tableNames = tablesRaw.map(t => t.TABLE_NAME);
-        
         console.log(`✅ Tablas encontradas: ${tableNames.length}`);
 
-        // Estructura global ("Objeto Gigante")
         const fullSchema = {};
 
-        // 2. Bucle: Analizar cada tabla
+        // --- BUCLE PRINCIPAL ---
         for (const tableName of tableNames) {
             process.stdout.write(`   Analizando tabla: ${tableName}... `); 
             
-            // Ejecutamos las 3 consultas en paralelo (Promesas)
-            const [columns, pks, uniques] = await Promise.all([
-                getTableColumns(tableName),      // Trae columnas
-                getPrimaryKey(tableName),        // Trae PKs
-                getUniqueConstraints(tableName)  // Trae Uniques (NUEVO)
+            // Ejecutamos las 4 promesas en paralelo
+            const [columns, pks, uniques, fks] = await Promise.all([
+                getTableColumns(tableName),
+                getPrimaryKey(tableName),
+                getUniqueConstraints(tableName),
+                getForeignKeys(tableName) // <--- Aquí obtenemos las relaciones
             ]);
 
-            // Guardamos todo en el esquema global
             fullSchema[tableName] = {
                 columns: columns, 
                 primaryKey: pks,
-                uniqueKeys: uniques // Guardamos las Uniques
+                uniqueKeys: uniques,
+                foreignKeys: fks // <--- Las guardamos en memoria
             };
-            
             console.log("OK");
         }
 
-        console.log("\n✅ --- EXTRACCIÓN DE METADATOS COMPLETADA (20/20 pts CORE) ---");
+        console.log("\n✅ --- PROCESO COMPLETADO (CORE: Tablas + Columnas + Relaciones) ---");
         
-        // 3. VERIFICACIÓN: Elegimos una tabla para mostrar resultados
-        // Intentamos buscar 'carreras' (que tiene UNIQUE 'codigo') o usamos la primera que exista
-        let testTable = 'carreras';
-        if (!fullSchema[testTable]) {
-            testTable = Object.keys(fullSchema)[0]; // Si no existe carreras, agarra la primera
-        }
-        
-        if (testTable) {
-            console.log(`\n🔎 Muestra de datos extraídos de la tabla '${testTable}':`);
-            console.log("   🔑 Primary Key:", fullSchema[testTable].primaryKey);
-            console.log("   🌟 Unique Keys:", fullSchema[testTable].uniqueKeys); // Debe salir ['codigo'] si usaste mi script SQL
+        // --- VERIFICACIÓN VISUAL ---
+        // Buscamos tablas que tengan relaciones para mostrarlas
+        const tablesWithFK = Object.keys(fullSchema).filter(t => fullSchema[t].foreignKeys.length > 0);
+
+        if (tablesWithFK.length > 0) {
+            console.log(`\n🔗 Se detectaron relaciones en ${tablesWithFK.length} tablas.`);
             
-            // Tabla visual de columnas
-            console.table(fullSchema[testTable].columns.map(col => ({
-                Nombre: col.COLUMN_NAME,
-                Tipo: col.COLUMN_TYPE,
-                Nulo: col.IS_NULLABLE
+            // Mostramos un ejemplo con la primera tabla que tenga relaciones
+            const exampleTable = tablesWithFK[0]; 
+            const data = fullSchema[exampleTable];
+
+            console.log(`\n🔎 Detalle de Relaciones para la tabla '${exampleTable}':`);
+            console.table(data.foreignKeys.map(fk => ({
+                'Columna Local': fk.COLUMN_NAME,
+                'Tipo Relación': 'FK ->',
+                'Tabla Destino': fk.REFERENCED_TABLE_NAME,
+                'Columna Destino': fk.REFERENCED_COLUMN_NAME,
+                'Regla Delete': fk.DELETE_RULE // [cite: 27]
             })));
+        } else {
+            console.log("\n⚠️ No se detectaron relaciones (Foreign Keys). ¿Seguro que la BD tiene FKs creadas?");
         }
 
     } catch (error) {
