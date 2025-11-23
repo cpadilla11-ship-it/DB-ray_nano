@@ -20,25 +20,25 @@ function generateDBML(schema, databaseName) {
         data.columns.forEach(col => {
             // CORRECCIÓN: Comillas en el nombre de la columna
             let line = `  "${col.COLUMN_NAME}" ${col.COLUMN_TYPE}`;
-            
+
             // Configuraciones de la columna (Settings)
             let settings = [];
-            
+
             // Es PK?
             if (data.primaryKey.includes(col.COLUMN_NAME)) {
                 settings.push('pk');
             }
-            
+
             // Es Unique? (Solo si no es PK)
             if (data.uniqueKeys.includes(col.COLUMN_NAME) && !data.primaryKey.includes(col.COLUMN_NAME)) {
                 settings.push('unique');
             }
-            
+
             // Not Null?
             if (col.IS_NULLABLE === 'NO') {
                 settings.push('not null');
             }
-            
+
             // Increment?
             if (col.EXTRA && col.EXTRA.includes('auto_increment')) {
                 settings.push('increment');
@@ -64,7 +64,7 @@ function generateDBML(schema, databaseName) {
 
     // 2. DEFINICIÓN DE RELACIONES (Refs)
     dbml += `// Relaciones\n`;
-    
+
     for (const [tableName, data] of Object.entries(schema)) {
         data.foreignKeys.forEach(fk => {
             const isOneToOne = data.uniqueKeys.includes(fk.COLUMN_NAME);
@@ -72,11 +72,11 @@ function generateDBML(schema, databaseName) {
 
             // CORRECCIÓN: Comillas en TODAS las partes de la referencia
             let refLine = `Ref: "${tableName}"."${fk.COLUMN_NAME}" ${relationSymbol} "${fk.REFERENCED_TABLE_NAME}"."${fk.REFERENCED_COLUMN_NAME}"`;
-            
+
             if (fk.DELETE_RULE && fk.DELETE_RULE !== 'NO ACTION') {
                 refLine += ` [delete: ${fk.DELETE_RULE.toLowerCase()}]`;
             }
-            
+
             dbml += `${refLine}\n`;
         });
     }
@@ -88,7 +88,11 @@ function generateDBML(schema, databaseName) {
  * Guarda el string DBML en un archivo.
  */
 function saveDBMLFile(content, fileName = 'diagrama.dbml') {
-    const filePath = path.join(__dirname, fileName);
+    // CAMBIAR ESTO:
+    // const filePath = path.join(__dirname, fileName);
+
+    // POR ESTO (Permite guardar el archivo fuera del exe):
+    const filePath = path.join(process.cwd(), fileName);
     fs.writeFileSync(filePath, content, 'utf8');
     console.log(`\n💾 Archivo DBML generado exitosamente: ${fileName}`);
     return filePath;
