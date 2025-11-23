@@ -71,10 +71,41 @@ async function getForeignKeys(tableName) {
     
     return await executeQuery(sql, [config.db.database, tableName]);
 }
+/**
+ * 5. (AVANZADO - Opción D) CORREGIDO
+ * Cuenta registros reales y calcula el tamaño en disco.
+ [cite_start]* [cite: 110-114, 451-460]
+ */
+async function getTableStats(tableName) {
+    // 1. Contar registros reales (Cardinalidad exacta)
+    // CORRECCIÓN: Usamos template strings `...` para insertar el nombre de la tabla directamente.
+    // Esto evita el error con .execute()
+    const countSql = `SELECT COUNT(*) as total FROM \`${tableName}\``;
+    
+    // Nota: Ya no enviamos [tableName] como segundo parámetro
+    const rowsCount = await executeQuery(countSql);
+    const totalRows = rowsCount[0].total;
+
+    // 2. Calcular tamaño en MB desde information_schema
+    // Aquí sí podemos usar ? porque estamos comparando valores (strings), no nombres de tablas
+    const sizeSql = `
+        SELECT ROUND(((DATA_LENGTH + INDEX_LENGTH) / 1024 / 1024), 2) AS size_mb
+        FROM information_schema.TABLES
+        WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?;
+    `;
+    const rowsSize = await executeQuery(sizeSql, [config.db.database, tableName]);
+    const sizeMB = rowsSize[0] ? rowsSize[0].size_mb : '0.00';
+
+    return {
+        rowCount: totalRows,
+        sizeMB: sizeMB
+    };
+}
 
 module.exports = {
     getTableColumns,
     getPrimaryKey,
     getUniqueConstraints,
-    getForeignKeys // <--- ¡Asegúrate de que esto esté aquí!
+    getForeignKeys, // <--- ¡Asegúrate de que esto esté aquí!
+    getTableStats // <--- ¡Asegúrate de que esta línea esté aquí!
 };

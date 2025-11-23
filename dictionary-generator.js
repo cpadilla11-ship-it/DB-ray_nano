@@ -1,30 +1,45 @@
-// NOMBRE DEL ARCHIVO: dictionary-generator.js
+// dictionary-generator.js
 const fs = require('fs');
 const path = require('path');
 
-/**
- * Genera un reporte en formato Markdown con el diccionario de datos.
- * Cumple con los requisitos de la rúbrica .
- */
 function generateMarkdown(schema, databaseName) {
     const date = new Date().toLocaleDateString();
     let md = `# Diccionario de Datos: ${databaseName}\n`;
     md += `**Fecha de generación:** ${date}\n\n`;
     
+    // --- RESUMEN EJECUTIVO (Con totales globales) ---
     md += `## Resumen Ejecutivo\n`;
     const tableCount = Object.keys(schema).length;
-    // Contamos relaciones sumando el tamaño de los arrays foreignKeys
     const relationCount = Object.values(schema).reduce((acc, t) => acc + t.foreignKeys.length, 0);
     
+    // Calculamos totales sumando las estadísticas de cada tabla
+    let totalRecords = 0;
+    let totalSize = 0.0;
+    
+    Object.values(schema).forEach(t => {
+        // Validamos que existan las stats para no romper el código
+        if (t.stats) {
+            totalRecords += t.stats.rowCount;
+            totalSize += parseFloat(t.stats.sizeMB || 0);
+        }
+    });
+
     md += `* **Total de Tablas:** ${tableCount}\n`;
-    md += `* **Total de Relaciones detectadas:** ${relationCount}\n`;
+    md += `* **Total de Relaciones:** ${relationCount}\n`;
+    md += `* **Registros Totales:** ${totalRecords}\n`;
+    md += `* **Tamaño Total:** ${totalSize.toFixed(2)} MB\n`;
     md += `\n---\n`;
 
     // --- DETALLE POR TABLA ---
     for (const [tableName, data] of Object.entries(schema)) {
-        md += `## Tabla: \`${tableName}\`\n\n`;
+        md += `## Tabla: \`${tableName}\`\n`;
         
-        // 1. Lista de Columnas [cite: 69]
+        // 👇 ¡AQUÍ ESTÁ LA LÍNEA QUE FALTABA! 👇
+        if (data.stats) {
+            md += `> **Estadísticas:** ${data.stats.rowCount} registros | ${data.stats.sizeMB} MB\n\n`;
+        }
+
+        // 1. Columnas
         md += `### Columnas\n`;
         md += `| Nombre | Tipo | Nulo | Default | Detalles |\n`;
         md += `|---|---|---|---|---|\n`;
@@ -41,10 +56,10 @@ function generateMarkdown(schema, databaseName) {
             md += `| **${col.COLUMN_NAME}** | \`${col.COLUMN_TYPE}\` | ${col.IS_NULLABLE} | ${defVal} | ${detailStr} |\n`;
         });
 
-        // 2. Resumen de Relaciones (si tiene) [cite: 72-73]
+        // 2. Relaciones
         if (data.foreignKeys.length > 0) {
             md += `\n### Relaciones (Foreign Keys)\n`;
-            md += `| Columna Local | Referencia a (Tabla.Columna) | Regla Borrado |\n`;
+            md += `| Columna Local | Referencia a | Regla Borrado |\n`;
             md += `|---|---|---|\n`;
             
             data.foreignKeys.forEach(fk => {
@@ -63,11 +78,8 @@ function generateMarkdown(schema, databaseName) {
 function saveMarkdownFile(content, fileName = 'diccionario_datos.md') {
     const filePath = path.join(__dirname, fileName);
     fs.writeFileSync(filePath, content, 'utf8');
-    console.log(`\n📘 Diccionario generado exitosamente: ${fileName}`);
+    console.log(`\n📘 Diccionario generado: ${fileName}`);
     return filePath;
 }
 
-module.exports = {
-    generateMarkdown,
-    saveMarkdownFile
-};
+module.exports = { generateMarkdown, saveMarkdownFile };
