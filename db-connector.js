@@ -1,39 +1,41 @@
 // db-connector.js
-const mysql = require('mysql2/promise'); // Importa la versión que soporta Promesas
-const config = require('./config');
+const mysql = require('mysql2/promise');
 
-// db-connector.js
-
-// Crear el Pool de Conexiones
-const pool = mysql.createPool(config.db);
+let pool = null; // La piscina empieza vacía
 
 /**
- * Función genérica para ejecutar una query SQL
- * @param {string} sql La sentencia SQL a ejecutar.
- * @param {Array} params Parámetros a ser pasados a la query (previene inyección SQL).
- * @returns {Promise<Array>} Los resultados de la query.
+ * Inicializa la conexión con las credenciales que de el usuario
  */
-async function executeQuery(sql, params = []) {
-    let connection;
+async function initConnection(userConfig) {
     try {
-        // Obtener una conexión del pool
-        connection = await pool.getConnection(); 
-
-        // Ejecutar la query
-        const [rows] = await connection.execute(sql, params);
-        return rows;
-
+        pool = mysql.createPool({
+            host: userConfig.host,
+            user: userConfig.user,
+            password: userConfig.password,
+            database: userConfig.database,
+            waitForConnections: true,
+            connectionLimit: 10,
+            queueLimit: 0
+        });
+        // Probamos la conexión inmediatamente
+        await pool.getConnection(); 
+        console.log("✅ ¡Conexión establecida correctamente!");
     } catch (error) {
-        console.error("Error ejecutando query:", error);
-        throw error; // Propagar el error para manejarlo en el llamador
-    } finally {
-        // Asegurarse de liberar la conexión de vuelta al pool
-        if (connection) {
-            connection.release();
-        }
+        console.error("❌ Error al conectar. Verifica tus credenciales.");
+        throw error; // Lanzamos el error para detener el programa
     }
 }
 
-module.exports = {
-    executeQuery
-};
+async function executeQuery(sql, params = []) {
+    if (!pool) throw new Error("La base de datos no ha sido inicializada.");
+    
+    const connection = await pool.getConnection();
+    try {
+        const [rows] = await connection.execute(sql, params);
+        return rows;
+    } finally {
+        connection.release();
+    }
+}
+
+module.exports = { initConnection, executeQuery };
